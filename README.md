@@ -5,4 +5,8 @@
 Eg:  
 
 
-  ![ramist diagram](tree.png)
+  ![ramist diagram](tree.png)  
+  
+## Todo  
+- Make dimensions dependent on font height instead of height, weight
+- Calculate padding based on dimensions of all children together
