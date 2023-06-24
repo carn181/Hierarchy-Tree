@@ -22,6 +22,8 @@
 #include <algorithm>
 #include <bits/stdc++.h>
 
+#define TREE_WIDTH 30  
+
 std::vector<std::string> splitstring(std::string s, char del){
   std::vector<std::string> str_list;
   std::stringstream ss(s);
@@ -42,22 +44,25 @@ int count_occurences(std::string s, char c){
 struct Tree {
   std::string text;
   std::vector<Tree> children;
-  uint y;
+  double x, y;
+  double mod;
   double width, height;
   Tree(std::string txt, std::vector<Tree> chldrn) {
     text=txt;
     children=chldrn;
   }
   void calc_text(Cairo::RefPtr<Cairo::Context> cr, int size){
+    height = 0; // JUST TO BE SURE
     Cairo::TextExtents extents;
     auto str_list = splitstring(text, '\n');
     cr->set_font_size(size);
-    for(auto i = 0ul ; i < str_list.size(); i++){
-      cr->get_text_extents(str_list[i], extents);
+    for(const auto &str: str_list){
+      cr->get_text_extents(str, extents);
+      
       width = std::max(width,extents.width);
+      
       height += extents.height;
     }
-    std::cout << width << "x" << height << std::endl;
   }
 };
 
@@ -87,7 +92,7 @@ public:
     cr->restore();
     cr->show_page(); // writes file
 
-    std::cout << "Wrote SVG file \"" << filename << "\"" << std::endl;
+    std::cout << "Wrote SVG file \"" << filename << "\"\n";
   }
 
   void set_background() {
@@ -105,13 +110,13 @@ public:
       cr->show_text(str_list[i]);
     }
   }
-  
+  // WILL BE REMOVED SOON, THERE JUST FOR WORKING LOL  
   void draw_tree(std::vector<Tree> t, int x, int y, double width, double height){
     int no_of_newlines = 0;
-    for(auto i = 0ul; i<=t.size()-1;i++){
-      no_of_newlines += count_occurences(t.at(i).text,'\n');
+    for(auto &child : t){
+      no_of_newlines += count_occurences(child.text,'\n');
     }
-    std::cout<<no_of_newlines<<std::endl;
+    std::cout<<no_of_newlines<<"\n";
     auto lines = no_of_newlines + t.size();
     auto const padding = 5;
     auto rows = lines + padding*(t.size()-1);
@@ -131,7 +136,7 @@ public:
       
     }
   }
-
+  // WILL BE REMOVED SOON
   void draw_paren(int x, int y, double width, double height, std::vector<Tree> arr) {
     cr->set_source_rgba(0.0, 0.0, 0.0, 0.7);
     // Parenthesis
@@ -164,10 +169,42 @@ public:
     draw_tree(arr, x, y, width, height);
     cr->stroke();
   }
-  void draw_tree_new(std::vector<Tree> t, int x, int y, uint depth, double font_size){
+  void draw_tree_new(Tree t, int x, int y, uint depth, double font_size){
     // First Pass
+    first_pass(&t, 0.0, 0, 30);
+    print_tree(t,0);
     // Second Pass
     // Final Pass for parens and rest ig
+  }
+
+  // Prints info of each node
+  void print_tree(Tree t, int depth){
+    for(auto j = 0; j != depth ; j++){
+      std::cout << "\t" ;
+    }    
+    std::cout << t.text << " at " << t.x  << "x" << t.y << "\n";
+
+    for(auto &child : t.children){
+      print_tree(child, 1+depth);
+    }
+  }
+  
+  int first_pass(Tree *t, double x, double j, double size, int start = -1){
+    if(start==-1)
+      t->calc_text(cr, size);
+    t->x=x+t->width+TREE_WIDTH;
+    t->y = j;
+    draw_text(t->x-t->width, t->y+500, size, t->text);
+
+    if(t->children.size() > 0){
+      auto k = 0;
+      for(auto &child : t->children){
+	child.calc_text(cr,size);
+	first_pass(&child, t->x,k, size,0);
+	k+=t->height;
+      }
+    }
+    return 0;
   }
   
   
@@ -176,7 +213,7 @@ public:
     // Parenthesis
     auto x1 = x + 2 * width / 3;
     int y = (y2+y1)/2;
-    std::cout<<y1<<" "<<y<<" "<<y2<<std::endl;
+    std::cout<<y1<<" "<<y<<" "<<y2<<'\n';
 
     // Upper Curve
     cr->move_to(x, y);
@@ -243,8 +280,7 @@ int test_hierarchytree(){
 #else
 
   std::cout
-      << "You must compile cairo with SVG support for this example to work."
-      << std::endl;
+      << "You must compile cairo with SVG support for this example to work.\n";
   return 1;
 
 #endif
@@ -261,7 +297,8 @@ int test_newmodel() {
                      {{"Third", {{"Fourth", {}}, {"Fourth", {}}}},
                       {"Third", {{"Fourth", {}}, {"Fourth", {}}}}}}}},
                   {"First", {}}}};
-  tr.calc_text(t.cr,20);
+  //  tr.calc_text(t.cr,20);
+  t.draw_tree_new(tr, 0, 0, 0, 30);
   t.export_svg();
   return 0;
 }
