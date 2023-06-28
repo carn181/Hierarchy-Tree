@@ -45,6 +45,13 @@ int count_occurences(std::string s, char c) {
   return count;
 }
 
+void print_char(char c, int n) {
+  for (int i = 1; i <= n; i++)
+    std::cout << c;
+}
+
+void print_tabs(int n) { print_char('\t', n); }
+
 struct Tree {
   std::string text;
   std::vector<Tree> children;
@@ -65,7 +72,7 @@ struct Tree {
 
       width = std::max(width, extents.width);
 
-      height += extents.height;
+      height -= extents.y_bearing;
     }
   }
 };
@@ -176,43 +183,6 @@ public:
     draw_tree(arr, x, y, width, height);
     cr->stroke();
   }
-  void draw_tree_new(Tree t, int x, int y, uint depth, double font_size) {
-    // First Pass
-    first_pass(&t, 0.0, 0, 30);
-    print_tree(t, 0);
-    // Second Pass
-    // Final Pass for parens and rest ig
-  }
-
-  // Prints info of each node
-  void print_tree(Tree t, int depth) {
-    for (auto j = 0; j != depth; j++) {
-      std::cout << "\t";
-    }
-    std::cout << t.text << " at " << t.x << "x" << t.y << "\n";
-
-    for (auto &child : t.children) {
-      print_tree(child, 1 + depth);
-    }
-  }
-
-  int first_pass(Tree *t, double x, double j, double size, int start = -1) {
-    if (start == -1)
-      t->calc_text(cr, size);
-    t->x = x + t->width + TREE_WIDTH;
-    t->y = j;
-    draw_text(t->x - t->width, t->y + 500, size, t->text);
-
-    if (t->children.size() > 0) {
-      auto k = 0;
-      for (auto &child : t->children) {
-        child.calc_text(cr, size);
-        first_pass(&child, t->x, k, size, 0);
-        k += t->height;
-      }
-    }
-    return 0;
-  }
 
   void draw_paren2(int x, int y1, int y2, double width) {
     cr->set_source_rgba(0.0, 0.0, 0.0, 0.7);
@@ -243,7 +213,137 @@ public:
     // Text
     cr->stroke();
   }
+
+  // Prints info of each node
+  void print_tree(Tree t, int depth = 0) {
+    print_tabs(depth);
+    std::cout << t.text << " at " << t.x << "x" << t.y << "\n";
+
+    for (auto &child : t.children) {
+      print_tree(child, 1 + depth);
+    }
+  }
+
+  int first_pass(Tree *t, double x, double y, double size, int start = -1) {
+    if (start == -1)
+      t->calc_text(cr, size);
+    t->x = x + t->width + TREE_WIDTH;
+    t->y = y;
+    //    draw_text(t->x - t->width, t->y + 500, size, t->text);
+
+    if (t->children.size() > 0) {
+      auto k = 0;
+      for (auto &child : t->children) {
+        child.calc_text(cr, size);
+        first_pass(&child, t->x, y + k, size, 0);
+        k += child.height;
+        if (t->text == "First\nFIRST") {
+          std::cout << "height = " << t->height << '\n';
+        }
+      }
+    }
+    return 0;
+  }
+
+#define LOG(format, ...)                                                       \
+  {                                                                            \
+    print_tabs(depth);                                                         \
+    std::printf(format, __VA_ARGS__);                                          \
+  }
+
+  // TODO: Need to equal almost equal floats (499.9999 and 500.0)
+  int second_pass(Tree *t, int depth = 0) {
+
+    LOG("%s: STARTING PASS\n", t->text.c_str());
+
+    if (t->children.size() == 0) {
+
+      LOG("%s: LEAF NO PASS\n", t->text.c_str());
+
+      return 0;
+    }
+
+    for (auto &child : t->children) {
+      second_pass(&child, depth + 1);
+    }
+    LOG("%s: Starting possible separation\n", t->text.c_str());
+
+    for (size_t i = 0, j = 1;
+         i <= t->children.size() - 1 && j <= t->children.size() - 1; i++, j++) {
+      double xl, xr, yl, yr;
+      Tree l_contour = t->children.at(i);
+      Tree r_contour = t->children.at(j);
+
+      do {
+        LOG("%s<%s,%s>: LOOP START\n", t->text.c_str(), r_contour.text.c_str(),
+            l_contour.text.c_str());
+        yl = l_contour.y;
+        yr = r_contour.y - r_contour.height;
+
+        if (yl < yr) {
+          // move by yr-l
+          print_char('=', 100);
+          LOG("MOVE BY %f\n", yr - yl);
+          print_char('=', 100);
+        }
+        xr = r_contour.x;
+        xl = l_contour.x;
+
+        LOG("%s<%s,%s>: %f,%f vs %f,%f\n", t->text.c_str(),
+            r_contour.text.c_str(), l_contour.text.c_str(), xr, yr, xl, yl);
+
+        if (xl <= xr) {
+          if (l_contour.children.empty())
+            continue;
+          l_contour = l_contour.children.back();
+        }
+        if (xl >= xr) {
+          if (r_contour.children.empty())
+            continue;
+          r_contour = r_contour.children.front();
+        }
+
+        LOG("%s<%s,%s>: LOOP DONE\n", t->text.c_str(), r_contour.text.c_str(),
+            l_contour.text.c_str());
+
+      } while (!r_contour.children.empty() && !l_contour.children.empty());
+    }
+    LOG("%s: PASS DONE\n", t->text.c_str());
+    return 0;
+  }
+
+  int draw_subtree(Tree t, double size) {
+    draw_text(t.x - t.width, t.y, size, t.text);
+    for (auto &child : t.children) {
+      draw_subtree(child, size);
+    }
+    return 0;
+  }
+
+  int draw_parens(Tree t) {
+    if (t.children.size() == 0) {
+      return 0;
+    } else {
+      draw_paren2(t.x + t.width, t.children.at(0).y + t.children.at(0).height,
+                  t.children.back().y, TREE_WIDTH);
+      for (auto &child : t.children) {
+        draw_parens(child);
+      }
+    }
+    return 0;
+  }
+
+  int draw_diagram(Tree t, double x, double y, double size) {
+    first_pass(&t, x, y, size);
+    second_pass(&t);
+    draw_subtree(t, size);
+    // draw_parens(t);
+    print_tree(t);
+    return 0;
+  }
 };
+
+// TESTS
 
 int test_hierarchytree() {
 #ifdef CAIRO_HAS_SVG_SURFACE
@@ -284,14 +384,15 @@ int test_hierarchytree() {
 int test_newmodel() {
   HierarchyTree t("new-tree.svg");
   t.set_background();
-  auto tr = Tree{"asdsa",
-                 {{"First",
-                   {{"Second"},
-                    {"Second",
-                     {{"Third", {{"Fourth"}, {"Fourth"}}},
-                      {"Third", {{"Fourth"}, {"Fourth"}}}}}}},
-                  {"First"}}};
-  t.draw_tree_new(tr, 0, 0, 0, 30);
+  auto tr = Tree{
+      "Root",
+      {{"First",
+        {{"Second", {{"Third", {{"Fo"}, {"Fou", {{"Fifth"}}}}}, {"Third"}}},
+         {"Second",
+          {{"Third", {{"Fourth"}, {"Fourth"}}},
+           {"Third", {{"Fourth"}, {"Fourth"}}}}}}},
+       {"First"}}};
+  t.draw_diagram(tr, 20, 500, 30);
   t.export_svg();
   return 0;
 }
