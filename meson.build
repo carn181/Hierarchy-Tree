@@ -1,4 +1,6 @@
-project('hierach', 'cpp')
+project('hierach', 'cpp'
+  , default_options: ['warning_level=3', 'cpp_std=c++14'])
+layout='flat'
 cairo = dependency('cairomm-1.0')
-add_global_arguments('-Wall', language : 'cpp')
-executable('hierarch', 'main.cpp', dependencies : cairo)
+include_directories('src')
+subdir('src')
