@@ -1,3 +1,4 @@
+#include "pango/pango-layout.h"
 #include "util.h"
 #include <bits/stdc++.h>
 #include <cairomm/context.h>
@@ -5,6 +6,8 @@
 #include <cairomm/surface.h>
 #include <cairomm/types.h>
 #include <cairommconfig.h>
+#include <pango/pango.h>
+#include <pango/pangocairo.h>
 #include <cstddef>
 #include <iostream>
 #include <string>
@@ -54,19 +57,19 @@ struct Tree {
   Tree& back(){ return children.back();}
   
   void calc_text(Cairo::RefPtr<Cairo::Context> cr, double size) {
-    Cairo::TextExtents et;
-    auto str_list = splitstring(text, '\n');
-    cr->set_font_size(size);
-
-    cr->get_text_extents(str_list.front(), et);
-    top_height = et.height;
-
-    for (const auto &str : str_list) {
-      Cairo::TextExtents e;
-      cr->get_text_extents(str, e);
-      width = std::max(width, e.width);
-      height += e.height;
-    }
+    PangoLayout *layout;
+    PangoFontDescription *desc;
+    layout = pango_cairo_create_layout (cr->cobj());
+    std::string s = "Monospace"+std::to_string(size);
+    pango_layout_set_text (layout, text.c_str(), -1);
+    desc = pango_font_description_from_string(s.c_str());
+    pango_layout_set_font_description(layout, desc);
+    pango_font_description_free(desc);
+    PangoRectangle r;
+    pango_layout_get_extents(layout,NULL,&r);
+    g_object_unref(layout);
+    width = pango_units_to_double(r.width);
+    height = pango_units_to_double(r.height);
   }
 };
 
@@ -90,7 +93,7 @@ public:
     auto surface = Cairo::SvgSurface::create(filename, width, height);
     cr = Cairo::Context::create(surface);
 
-    font = Cairo::ToyFontFace::create("", Cairo::FontSlant::FONT_SLANT_NORMAL,
+    font = Cairo::ToyFontFace::create("Monospace", Cairo::FontSlant::FONT_SLANT_NORMAL,
                                       Cairo::FontWeight::FONT_WEIGHT_NORMAL);
     cr->set_font_face(font);
 
@@ -112,14 +115,18 @@ public:
     cr->save();
   }
 
-  void draw_text(double x, double y, std::string s, double height = 0) {
-    auto str_list = splitstring(s, '\n');
-    cr->set_font_size(size);
-    for (size_t i = 0; i < str_list.size(); i++) {
-      double fsize = (height == 0) ? size : height / str_list.size();
-      cr->move_to(x, y-height+fsize + static_cast<double>(i) * fsize);
-      cr->show_text(str_list[i]);
-    }
+  void draw_text(double x, double y, std::string s) {
+   cr->move_to(x,y);
+    PangoLayout *layout;
+    PangoFontDescription *desc;
+    layout = pango_cairo_create_layout (cr->cobj());
+    std::string str = "Monospace"+std::to_string(size);
+    pango_layout_set_text (layout, s.c_str(), -1);
+    desc = pango_font_description_from_string(str.c_str());
+    pango_layout_set_font_description(layout, desc);
+    pango_font_description_free(desc);
+    pango_cairo_show_layout(cr->cobj(),layout); 
+    g_object_unref(layout);
   }
 
   // Check this func for errors
@@ -170,7 +177,7 @@ public:
     LOG("SETTING %s as %f,%f with width %f and height %f \n", t->text.c_str(), x, y, t->width, t->height);
     auto str_list = splitstring(t->text,'\n');
     t->x = x;
-    t->y = y+t->height-(t->height/str_list.size());
+    t->y = y;
 
     // If not leaf node, assign coordiantes for every child node
     if (!t->children.empty()) {
@@ -217,13 +224,12 @@ public:
       double xl, xr, yl, yr;
       Tree *l_contour = &t->children.at(i);
       Tree *r_contour = &t->children.at(j);
-
+      double lmod = 0, rmod = 0;
       do {
         LOGT("%s<%s,%s>: LOOP START MOD: %f\n", t->text.c_str(),
              l_contour->text.c_str(), r_contour->text.c_str(), l_contour->mod);
-        yl = l_contour->y;
-        yr = r_contour->y - r_contour->height;
-
+        yl = l_contour->y + l_contour->height;
+        yr = r_contour->y;
         xr = r_contour->x + r_contour->width;
         xl = l_contour->x + l_contour->width;
 
@@ -232,11 +238,11 @@ public:
              l_contour->text.c_str(), r_contour->text.c_str(), xl, yl, l_contour->mod, xr, yr, r_contour->mod);
 
         // WHERE THE MAIN SHIFTING MAGIC HAPPENS
-        if (yl + l_contour->mod > yr + r_contour->mod) {
+        if (yl + lmod+ l_contour->mod > yr + rmod + r_contour->mod) {
           SEP()
           LOGT("MOVE %s BY %f\n", t->children.at(j).text.c_str(), yl - yr + l_contour->mod + r_contour->mod);
           t->children.at(j).mod = std::max(t->children.at(j).mod,
-                                           (yl + l_contour->mod) - (yr + r_contour->mod));
+                                           (yl + lmod + l_contour->mod) - (yr + rmod + r_contour->mod));
           SEP();
         }
 
@@ -247,6 +253,7 @@ public:
                l_contour->text.c_str(), l_contour->children.size(),
                l_contour->front().text.c_str(),
                l_contour->back().children.size());
+          lmod+=l_contour->mod;
           l_contour = &l_contour->back();
           LOGT("CHANGED L_CONTOUR TO %s\n", l_contour->text.c_str());
         }
@@ -257,6 +264,7 @@ public:
                r_contour->text.c_str(), r_contour->children.size(),
                r_contour->front().text.c_str(),
                r_contour->front().children.size());
+          rmod+=r_contour->mod;
           r_contour = &r_contour->front();
           LOGT("CHANGED R_CONTOUR TO %s\n", r_contour->text.c_str());
         }
@@ -273,17 +281,16 @@ public:
   }
 
   int draw_subtree(Tree t, double mod = 0.0) {
-    draw_text(t.x, t.y + mod + t.mod, t.text, t.height);
+    draw_text(t.x, t.y + mod + t.mod, t.text);
     for (auto &child : t.children) {
       draw_subtree(child, mod + t.mod);
     }
 
     if (!t.children.empty()) {
       double x = t.x + t.width;
-      double y = t.y - (t.height / 2.0) + mod + t.mod;
-      double y1 = t.front().y + mod + t.mod + t.front().mod -
-	t.front().top_height;
-      double y2 = t.back().y + mod + t.mod + t.back().mod;
+      double y = t.y + (t.height / 2.0) + mod + t.mod;
+      double y1 = t.front().y + mod + t.mod + t.front().mod ;
+      double y2 = t.back().y + mod + t.mod + t.back().mod +t.back().height;
       double width = xsep;
       draw_paren(x+5, y, y1, y2, width);
       //      draw_paren(t.x+t.width, t.y-t.height/2+mod+t.mod,
@@ -298,9 +305,6 @@ public:
     second_pass(&t);
     draw_subtree(t);
     print_tree(t);
-    cr->move_to(0, 300.000000);
-    cr->line_to(1920, 300.000000);
-    cr->stroke();
     return 0;
   }
 };

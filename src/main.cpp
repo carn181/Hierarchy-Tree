@@ -11,4 +11,4 @@
 
 #include "test.h"
 
-int main() { test_newmodel(); test_drawparen();}
+int main() { test_newmodel();}
